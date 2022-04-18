@@ -7,13 +7,20 @@ pub struct Negotiator<'a> {
 }
 
 impl<'a> Negotiator<'a> {
-    pub fn new(supported: &[&'a str]) -> Result<Self, Error> {
+    pub fn new<I, S>(supported: I) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = &'a S>,
+        S: AsRef<str> + ?Sized + 'a,
+    {
         Ok(Self {
             supported: supported
                 .into_iter()
-                .map(|&full| {
-                    let (main, sub) = full.split_once('/').ok_or(Error::MissingSeparator)?;
-                    Ok((full, main, sub))
+                .map(|full| {
+                    let (main, sub) = full
+                        .as_ref()
+                        .split_once('/')
+                        .ok_or(Error::MissingSeparator)?;
+                    Ok((full.as_ref(), main, sub))
                 })
                 .collect::<Result<_, _>>()?,
         })
@@ -74,7 +81,7 @@ mod tests {
         header: &str,
         supported: [&'a str; N],
     ) -> Result<Option<&'a str>, Error> {
-        Negotiator::new(&supported).unwrap().negotiate(header)
+        Negotiator::new(supported).unwrap().negotiate(header)
     }
 
     #[test]
@@ -139,7 +146,7 @@ mod tests {
         assert!(super::quality("text/html; q= 0.9")
             .unwrap_err()
             .is_invalid_quality());
-        assert_eq!(super::quality("text/html; q =0.9"), Ok(1.));
-        assert_eq!(super::quality("text/html; q = 0.9"), Ok(1.));
+        assert_eq!(super::quality("text/html; q =0.9"), Ok(1.)); // Invalid param ignored.
+        assert_eq!(super::quality("text/html; q = 0.9"), Ok(1.)); // Invalid param ignored.
     }
 }
