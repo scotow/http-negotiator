@@ -1,4 +1,5 @@
 use std::iter::Map;
+use std::slice::Iter;
 
 use crate::accept::negotiator::Negotiator;
 use crate::Error;
@@ -29,8 +30,8 @@ impl NegotiatorOwned {
 
 impl<'a> Negotiator<'a, 'a> for NegotiatorOwned {
     type SupportedIter = Map<
-        std::slice::Iter<'a, (String, String, String)>,
-        for<'r> fn(&'r (String, String, String)) -> (&'r str, &'r str, &'r str),
+        Iter<'a, (String, String, String)>,
+        fn(&(String, String, String)) -> (&str, &str, &str),
     >;
 
     fn supported(&'a self) -> Self::SupportedIter {
