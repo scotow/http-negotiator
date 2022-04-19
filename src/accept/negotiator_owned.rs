@@ -1,3 +1,6 @@
+use std::iter::Map;
+use std::slice::Iter;
+
 use crate::accept::negotiator::Negotiator;
 use crate::Error;
 
@@ -25,8 +28,31 @@ impl NegotiatorOwned {
     }
 }
 
-// impl<'a> Negotiator<'a> for NegotiatorOwned {
-//     fn supported(&self) -> &[(&'a str, &'a str, &'a str)] {
-//         &self.supported
+// impl<'a, 'b> Negotiator<'a, 'b> for NegotiatorOwned
+// where
+//     'a: 'b,
+// {
+//     type SupportedIter = Box<dyn Iterator<Item = (&str, &str, &str)>>;
+
+//     fn supported(&'b self) -> Self::SupportedIter {
+
+//         Box::new(
+//             self.supported
+//                 .iter()
+//                 .map(|(f, m, s)| (f.as_str(), m.as_str(), s.as_str())),
+//         )
+//     }
+// }
+
+// #[cfg(test)]
+// mod tests {
+//     use crate::accept::negotiator::Negotiator;
+
+//     use super::NegotiatorOwned;
+
+//     #[test]
+//     fn owned() {
+//         let negotiator = NegotiatorOwned::new(["text/html"]).unwrap();
+//         negotiator.negotiate("text/html");
 //     }
 // }

@@ -5,7 +5,7 @@ pub struct NegotiatorRef<'a> {
     supported: Vec<(&'a str, &'a str, &'a str)>,
 }
 
-impl<'a> NegotiatorRef<'a> {
+impl<'a, 'b> NegotiatorRef<'a> {
     pub fn new<I, S>(supported: I) -> Result<Self, Error>
     where
         I: IntoIterator<Item = &'a S>,
@@ -26,8 +26,13 @@ impl<'a> NegotiatorRef<'a> {
     }
 }
 
-impl<'a> Negotiator<'a> for NegotiatorRef<'a> {
-    fn supported(&self) -> &[(&'a str, &'a str, &'a str)] {
-        &self.supported
+impl<'a, 'b> Negotiator<'a, 'b> for NegotiatorRef<'a>
+where
+    'a: 'b,
+{
+    type SupportedIter = std::slice::Iter<'b, (&'a str, &'a str, &'a str)>;
+
+    fn supported(&'b self) -> Self::SupportedIter {
+        self.supported.iter()
     }
 }

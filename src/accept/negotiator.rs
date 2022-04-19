@@ -1,9 +1,15 @@
 use crate::{matches, quality, Error};
 
-pub trait Negotiator<'a> {
-    fn supported(&self) -> &[(&'a str, &'a str, &'a str)];
+pub trait Negotiator<'a, 'b> {
+    type SupportedIter;
 
-    fn negotiate(&self, header: &str) -> Result<Option<&'a str>, Error> {
+    fn supported(&'b self) -> Self::SupportedIter;
+
+    fn negotiate(&'b self, header: &str) -> Result<Option<&'a str>, Error>
+    where
+        'a: 'b,
+        Self::SupportedIter: Iterator<Item = &'b (&'a str, &'a str, &'a str)>,
+    {
         let mut selected: Option<(&str, f32)> = None;
         for entry in header.split(",").map(|m| m.trim()) {
             let req_full = entry.split(';').next().ok_or(Error::InvalidHeader)?;
@@ -13,7 +19,7 @@ pub trait Negotiator<'a> {
             }
             let quality = quality(entry)?;
 
-            for &(full, main, sub) in self.supported() {
+            for (full, main, sub) in self.supported() {
                 if let Some((_, prev_quality)) = selected {
                     if prev_quality > quality {
                         continue;
