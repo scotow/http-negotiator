@@ -1,5 +1,7 @@
 use crate::accept::negotiator::Negotiator;
 use crate::Error;
+use std::iter::Copied;
+use std::slice::Iter;
 
 pub struct NegotiatorRef<'a> {
     supported: Vec<(&'a str, &'a str, &'a str)>,
@@ -30,9 +32,25 @@ impl<'a, 'b> Negotiator<'a, 'b> for NegotiatorRef<'a>
 where
     'a: 'b,
 {
-    type SupportedIter = std::slice::Iter<'b, (&'a str, &'a str, &'a str)>;
+    type SupportedIter = Copied<Iter<'b, (&'a str, &'a str, &'a str)>>;
 
     fn supported(&'b self) -> Self::SupportedIter {
-        self.supported.iter()
+        self.supported.iter().copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NegotiatorRef;
+    use crate::accept::negotiator::Negotiator;
+
+    #[test]
+    fn referenced() {
+        assert_eq!(
+            NegotiatorRef::new(["text/html"])
+                .unwrap()
+                .negotiate("text/html"),
+            Ok(Some("text/html"))
+        );
     }
 }

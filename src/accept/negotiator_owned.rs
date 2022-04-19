@@ -1,5 +1,4 @@
 use std::iter::Map;
-use std::slice::Iter;
 
 use crate::accept::negotiator::Negotiator;
 use crate::Error;
@@ -28,31 +27,33 @@ impl NegotiatorOwned {
     }
 }
 
-// impl<'a, 'b> Negotiator<'a, 'b> for NegotiatorOwned
-// where
-//     'a: 'b,
-// {
-//     type SupportedIter = Box<dyn Iterator<Item = (&str, &str, &str)>>;
+impl<'a> Negotiator<'a, 'a> for NegotiatorOwned {
+    type SupportedIter = Map<
+        std::slice::Iter<'a, (String, String, String)>,
+        for<'r> fn(&'r (String, String, String)) -> (&'r str, &'r str, &'r str),
+    >;
 
-//     fn supported(&'b self) -> Self::SupportedIter {
+    fn supported(&'a self) -> Self::SupportedIter {
+        self.supported.iter().map(tuple_ref)
+    }
+}
 
-//         Box::new(
-//             self.supported
-//                 .iter()
-//                 .map(|(f, m, s)| (f.as_str(), m.as_str(), s.as_str())),
-//         )
-//     }
-// }
+fn tuple_ref(t: &(String, String, String)) -> (&str, &str, &str) {
+    (t.0.as_str(), t.1.as_str(), t.2.as_ref())
+}
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::accept::negotiator::Negotiator;
+#[cfg(test)]
+mod tests {
+    use super::NegotiatorOwned;
+    use crate::accept::negotiator::Negotiator;
 
-//     use super::NegotiatorOwned;
-
-//     #[test]
-//     fn owned() {
-//         let negotiator = NegotiatorOwned::new(["text/html"]).unwrap();
-//         negotiator.negotiate("text/html");
-//     }
-// }
+    #[test]
+    fn owned() {
+        assert_eq!(
+            NegotiatorOwned::new(["text/html"])
+                .unwrap()
+                .negotiate("text/html"),
+            Ok(Some("text/html"))
+        );
+    }
+}
