@@ -1,3 +1,4 @@
+use crate::accept::are_wildcards_valid;
 use crate::{matches, quality, Error};
 
 pub trait Negotiator<'a, 'b> {
@@ -14,14 +15,15 @@ pub trait Negotiator<'a, 'b> {
         for entry in header.split(",").map(|m| m.trim()) {
             let req_full = entry.split(';').next().ok_or(Error::InvalidHeader)?;
             let (req_main, req_sub) = req_full.split_once('/').ok_or(Error::MissingSeparator)?;
-            if req_main == "*" && req_sub != "*" {
-                return Err(Error::InvalidWildcard);
+            if req_sub.contains('/') {
+                return Err(Error::TooManyPart);
             }
+            are_wildcards_valid(req_main, req_sub)?;
             let quality = quality(entry)?;
 
             for (full, main, sub) in self.supported() {
                 if let Some((_, prev_quality)) = selected {
-                    if quality < prev_quality {
+                    if quality <= prev_quality {
                         continue;
                     }
                 }
@@ -37,9 +39,10 @@ pub trait Negotiator<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
+    use crate::accept::negotiator_ref::NegotiatorRef;
+
     use super::Error;
     use super::Negotiator;
-    use crate::accept::negotiator_ref::NegotiatorRef;
 
     fn negotiate<'a, const N: usize>(
         header: &str,
@@ -62,6 +65,14 @@ mod tests {
         // One to multiple.
         assert_eq!(
             negotiate("text/html", ["application/json", "text/html"]),
+            Ok(Some("text/html"))
+        );
+        // Same quality.
+        assert_eq!(
+            negotiate(
+                "text/html, application/json",
+                ["text/html", "application/json"]
+            ),
             Ok(Some("text/html"))
         );
         // Subtype wildcard.
@@ -97,6 +108,22 @@ mod tests {
                 ["text/html", "application/json"]
             ),
             Ok(Some("application/json")),
+        );
+    }
+
+    #[test]
+    fn errors() {
+        assert_eq!(
+            negotiate("text", ["text/html"]),
+            Err(Error::MissingSeparator)
+        );
+        assert_eq!(
+            negotiate("text/html/whatever", ["text/html"]),
+            Err(Error::TooManyPart)
+        );
+        assert_eq!(
+            negotiate("*/html", ["text/html"]),
+            Err(Error::InvalidWildcard)
         );
     }
 }

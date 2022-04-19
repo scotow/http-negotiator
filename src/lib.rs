@@ -1,7 +1,8 @@
-mod accept;
-mod error;
-
+pub use accept::*;
 pub use error::Error;
+
+pub mod accept;
+mod error;
 
 fn quality(mime: &str) -> Result<f32, Error> {
     for param in mime.split(';').map(|p| p.trim()) {

@@ -1,8 +1,11 @@
-use crate::accept::negotiator::Negotiator;
-use crate::Error;
 use std::iter::Copied;
 use std::slice::Iter;
 
+use crate::accept::are_wildcards_valid;
+use crate::accept::negotiator::Negotiator;
+use crate::Error;
+
+#[derive(Debug)]
 pub struct NegotiatorRef<'a> {
     supported: Vec<(&'a str, &'a str, &'a str)>,
 }
@@ -21,6 +24,10 @@ impl<'a, 'b> NegotiatorRef<'a> {
                         .as_ref()
                         .split_once('/')
                         .ok_or(Error::MissingSeparator)?;
+                    if sub.contains('/') {
+                        return Err(Error::TooManyPart);
+                    }
+                    are_wildcards_valid(main, sub)?;
                     Ok((full.as_ref(), main, sub))
                 })
                 .collect::<Result<_, _>>()?,
@@ -41,8 +48,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::NegotiatorRef;
     use crate::accept::negotiator::Negotiator;
+    use crate::Error;
+
+    use super::NegotiatorRef;
 
     #[test]
     fn referenced() {
@@ -51,6 +60,22 @@ mod tests {
                 .unwrap()
                 .negotiate("text/html"),
             Ok(Some("text/html"))
+        );
+    }
+
+    #[test]
+    fn errors() {
+        assert_eq!(
+            NegotiatorRef::new(["text"]).unwrap_err(),
+            Error::MissingSeparator,
+        );
+        assert_eq!(
+            NegotiatorRef::new(["text/html/whatever"]).unwrap_err(),
+            Error::TooManyPart
+        );
+        assert_eq!(
+            NegotiatorRef::new(["*/html"]).unwrap_err(),
+            Error::InvalidWildcard
         );
     }
 }
