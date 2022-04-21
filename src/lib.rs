@@ -3,6 +3,7 @@ pub use error::Error;
 
 pub mod accept;
 mod error;
+mod v2;
 
 fn quality(mime: &str) -> Result<f32, Error> {
     for param in mime.split(';').map(|p| p.trim()) {
