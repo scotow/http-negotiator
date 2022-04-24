@@ -1,28 +1,37 @@
 use crate::v2::negotiator::Negotiation;
 use crate::v2::{parse_mime, parse_mime_with_params};
 use crate::{matches, quality, Error};
-use std::borrow::Cow;
 
 pub struct AcceptNegotiation;
 
 impl<'a> Negotiation<'a> for AcceptNegotiation {
-    type ParsedSupported = (Cow<'a, str>, Cow<'a, str>, Cow<'a, str>);
+    type ParsedSupported = (String, String, String);
 
-    fn parse_supported<S>(mime: S) -> Result<Self::ParsedSupported, Error>
-    where
-        S: Into<Cow<'a, str>>,
-    {
-        let mime = mime.into();
-        let (main, sub) = match &mime {
-            Cow::Borrowed(mime) => {
-                let (main, sub) = parse_mime(&mime)?;
-                (Cow::from(main), Cow::from(sub))
-            }
-            Cow::Owned(mime) => {
-                let (main, sub) = parse_mime(&mime)?;
-                (Cow::from(main.to_owned()), Cow::from(sub.to_owned()))
-            }
-        };
+    fn parse_supported(mime: &'a str) -> Result<Self::ParsedSupported, Error> {
+        let (main, sub) = parse_mime(mime)?;
+        Ok((mime.to_owned(), main.to_owned(), sub.to_owned()))
+    }
+
+    fn negotiate<'b>(
+        supported: &'b [Self::ParsedSupported],
+        header: &str,
+    ) -> Result<Option<&'b str>, Error> {
+        negotiate(
+            supported
+                .into_iter()
+                .map(|s| (s.0.as_str(), s.1.as_str(), s.2.as_str())),
+            header,
+        )
+    }
+}
+
+pub struct AcceptNegotiationRef;
+
+impl<'a> Negotiation<'a> for AcceptNegotiationRef {
+    type ParsedSupported = (&'a str, &'a str, &'a str);
+
+    fn parse_supported(mime: &'a str) -> Result<Self::ParsedSupported, Error> {
+        let (main, sub) = parse_mime(mime)?;
         Ok((mime, main, sub))
     }
 
@@ -30,32 +39,38 @@ impl<'a> Negotiation<'a> for AcceptNegotiation {
         supported: &'b [Self::ParsedSupported],
         header: &str,
     ) -> Result<Option<&'b str>, Error> {
-        let mut selected: Option<(&str, f32)> = None;
-        for entry in header.split(",").map(|m| m.trim()) {
-            let (_, req_main, req_sub) = parse_mime_with_params(entry)?;
-            let quality = quality(entry)?;
-            for (mime, main, sub) in supported {
-                if let Some((_, prev_quality)) = selected {
-                    if quality <= prev_quality {
-                        continue;
-                    }
-                }
-                if matches(main, req_main) && matches(sub, req_sub) {
-                    selected = Some((mime, quality));
-                    break;
+        negotiate(supported.into_iter().copied(), header)
+    }
+}
+
+fn negotiate<'a, I>(supported: I, header: &str) -> Result<Option<&'a str>, Error>
+where
+    I: IntoIterator<Item = (&'a str, &'a str, &'a str)> + Clone,
+{
+    let mut selected: Option<(&str, f32)> = None;
+    for entry in header.split(',').map(|m| m.trim()) {
+        let (_, req_main, req_sub) = parse_mime_with_params(entry)?;
+        let quality = quality(entry)?;
+        for (mime, main, sub) in supported.clone().into_iter() {
+            if let Some((_, prev_quality)) = selected {
+                if quality <= prev_quality {
+                    continue;
                 }
             }
+            if matches(main, req_main) && matches(sub, req_sub) {
+                selected = Some((mime, quality));
+                break;
+            }
         }
-        Ok(selected.map(|s| s.0))
     }
+    Ok(selected.map(|s| s.0))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::v2::accept::AcceptNegotiation;
+    use crate::v2::accept::{AcceptNegotiation, AcceptNegotiationRef};
     use crate::v2::negotiator::Negotiator;
     use crate::Error;
-    use std::borrow::Cow;
 
     fn negotiate<'a, const N: usize>(
         header: &str,
@@ -63,7 +78,7 @@ mod tests {
         expected: Result<Option<&str>, Error>,
     ) {
         assert_eq!(
-            Negotiator::<AcceptNegotiation>::new(supported)
+            Negotiator::<AcceptNegotiationRef>::new(supported)
                 .unwrap()
                 .negotiate(header),
             expected
@@ -124,5 +139,12 @@ mod tests {
             ["text/html", "application/json"],
             Ok(Some("application/json")),
         );
+    }
+
+    #[test]
+    fn negotiate_owned() {
+        let it = "text/html".to_owned();
+        let negotiator = Negotiator::<AcceptNegotiation>::new([it.as_str()]).unwrap();
+        assert_eq!(negotiator.negotiate("text/html"), Ok(Some("text/html")));
     }
 }

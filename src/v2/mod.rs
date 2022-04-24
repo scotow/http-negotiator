@@ -1,4 +1,4 @@
-use crate::{quality, Error};
+use crate::Error;
 
 pub mod accept;
 pub mod negotiator;
@@ -22,3 +22,15 @@ fn parse_mime(mime: &str) -> Result<(&str, &str), Error> {
     }
     Ok((main, sub))
 }
+
+// pub trait Supported {
+//     type Origin;
+// }
+//
+// pub struct Ref<'a> {
+//     phantom: PhantomData<&'a ()>,
+// }
+//
+// impl<'a> Supported for Ref<'a> {
+//     type Origin = &'a str;
+// }

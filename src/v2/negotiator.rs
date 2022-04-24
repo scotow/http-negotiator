@@ -1,5 +1,4 @@
 use crate::Error;
-use std::borrow::Cow;
 
 pub struct Negotiator<'a, T>
 where
@@ -12,10 +11,9 @@ impl<'a, T> Negotiator<'a, T>
 where
     T: Negotiation<'a>,
 {
-    pub fn new<I, S>(supported: I) -> Result<Self, Error>
+    pub fn new<I>(supported: I) -> Result<Self, Error>
     where
-        I: IntoIterator<Item = S>,
-        S: Into<Cow<'a, str>>,
+        I: IntoIterator<Item = &'a str>,
     {
         Ok(Self {
             supported: supported
@@ -33,9 +31,7 @@ where
 pub trait Negotiation<'a> {
     type ParsedSupported;
 
-    fn parse_supported<S>(from: S) -> Result<Self::ParsedSupported, Error>
-    where
-        S: Into<Cow<'a, str>>;
+    fn parse_supported(from: &'a str) -> Result<Self::ParsedSupported, Error>;
 
     fn negotiate<'b>(
         supported: &'b [Self::ParsedSupported],
