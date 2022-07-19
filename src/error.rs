@@ -12,6 +12,8 @@ pub enum Error {
     InvalidWildcard,
     #[error("malformed header")]
     InvalidHeader,
+    #[error("quality param not allowed")]
+    QualityNotAllowed,
     #[error("invalid quality param")]
     InvalidQuality { source: <f32 as FromStr>::Err },
 }
