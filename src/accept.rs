@@ -1,8 +1,24 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
+#[cfg(feature = "axum")]
+use async_trait::async_trait;
+#[cfg(feature = "axum")]
+use axum_core::extract::{FromRequest, RequestParts};
+use http::StatusCode;
+#[cfg(feature = "axum")]
+use http::{header, Request};
+#[cfg(feature = "axum")]
+use tower_layer::Layer;
+#[cfg(feature = "axum")]
+use tower_service::Service;
 
 use crate::{extract_quality, matches, mime_score, parse_mime, AsMime, Error};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AcceptNegotiator<T> {
     supported: Vec<(String, String, BTreeMap<String, String>, T)>,
 }
@@ -29,6 +45,10 @@ impl<T> AcceptNegotiator<T> {
 
     pub fn len(&self) -> usize {
         self.supported.len()
+    }
+
+    pub fn unwrap_first(&self) -> &T {
+        &self.supported[0].3
     }
 }
 
@@ -73,6 +93,88 @@ impl<T> AcceptNegotiator<T> {
                 .reverse()
         });
         Ok(mimes)
+    }
+}
+
+#[cfg(feature = "axum")]
+impl<S, T> Layer<S> for AcceptNegotiator<T>
+where
+    T: Clone,
+{
+    type Service = AcceptNegotiatorService<S, T>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        if self.len() == 0 {
+            panic!("negotiator must not be empty");
+        }
+
+        AcceptNegotiatorService {
+            inner,
+            negotiator: Arc::new(self.clone()),
+        }
+    }
+}
+
+#[cfg(feature = "axum")]
+pub struct AcceptNegotiatorService<S, T> {
+    inner: S,
+    negotiator: Arc<AcceptNegotiator<T>>,
+}
+
+#[cfg(feature = "axum")]
+impl<ResBody, S, T> Service<Request<ResBody>> for AcceptNegotiatorService<S, T>
+where
+    S: Service<Request<ResBody>>,
+    T: Clone + Send + Sync + 'static,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
+        req.extensions_mut().insert(Arc::clone(&self.negotiator));
+        self.inner.call(req)
+    }
+}
+
+#[cfg(feature = "axum")]
+pub struct Negotiation<T>(pub T);
+
+#[cfg(feature = "axum")]
+#[async_trait]
+impl<B, T> FromRequest<B> for Negotiation<T>
+where
+    T: Send + Sync + Clone + 'static,
+    B: Send,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let negotiator = req.extensions().get::<Arc<AcceptNegotiator<T>>>().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Missing negotiator registration".to_owned(),
+        ))?;
+        let header = req.headers().get(header::ACCEPT);
+        let res = match header {
+            Some(header) => {
+                let header = header
+                    .to_str()
+                    .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid Accept header".to_owned()))?;
+                negotiator
+                    .negotiate(header)
+                    .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?
+            }
+            None => None,
+        };
+
+        Ok(Negotiation(
+            res.unwrap_or_else(|| negotiator.unwrap_first()).clone(),
+        ))
     }
 }
 
