@@ -17,9 +17,3 @@ pub enum Error {
     #[error("invalid quality param")]
     InvalidQuality { source: <f32 as FromStr>::Err },
 }
-
-impl Error {
-    pub fn is_invalid_quality(&self) -> bool {
-        matches!(self, Error::InvalidQuality { source: _ })
-    }
-}

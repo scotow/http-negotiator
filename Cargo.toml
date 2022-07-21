@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.30"
+thiserror = "1.0.31"
+axum-core = { version = "0.2.7", optional = true }
+
+[features]
+axum = ["axum-core"]
