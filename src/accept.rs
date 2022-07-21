@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{extract_quality, matches, mime_score, parse_mime, Error};
+use crate::{extract_quality, matches, mime_score, parse_mime, AsMime, Error};
 
 #[derive(Debug)]
 pub struct Negotiator<T> {
@@ -73,16 +73,6 @@ impl<T> Negotiator<T> {
                 .reverse()
         });
         Ok(mimes)
-    }
-}
-
-pub trait AsMime {
-    fn as_mime(&self) -> &str;
-}
-
-impl<T: AsRef<str>> AsMime for T {
-    fn as_mime(&self) -> &str {
-        self.as_ref()
     }
 }
 

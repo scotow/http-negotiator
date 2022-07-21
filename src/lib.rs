@@ -6,6 +6,16 @@ use std::{borrow::Borrow, collections::BTreeMap};
 pub use accept::Negotiator as AcceptNegotiator;
 pub use error::Error;
 
+pub trait AsMime {
+    fn as_mime(&self) -> &str;
+}
+
+impl<T: AsRef<str>> AsMime for T {
+    fn as_mime(&self) -> &str {
+        self.as_ref()
+    }
+}
+
 fn parse_mime<'a, T>(mime: &'a str, from_header: bool) -> Result<(T, T, BTreeMap<T, T>), Error>
 where
     T: From<&'a str> + Ord + Borrow<str>,
