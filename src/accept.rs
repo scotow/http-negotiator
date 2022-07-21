@@ -3,11 +3,11 @@ use std::collections::BTreeMap;
 use crate::{extract_quality, matches, mime_score, parse_mime, AsMime, Error};
 
 #[derive(Debug)]
-pub struct Negotiator<T> {
+pub struct AcceptNegotiator<T> {
     supported: Vec<(String, String, BTreeMap<String, String>, T)>,
 }
 
-impl<T> Negotiator<T> {
+impl<T> AcceptNegotiator<T> {
     pub fn new<I>(iter: I) -> Result<Self, Error>
     where
         T: AsMime,
@@ -32,7 +32,7 @@ impl<T> Negotiator<T> {
     }
 }
 
-impl<T> Negotiator<T> {
+impl<T> AcceptNegotiator<T> {
     pub fn negotiate(&self, header: &str) -> Result<Option<&T>, Error> {
         let mimes = Self::parse_sort_header(header)?;
 
@@ -80,12 +80,12 @@ impl<T> Negotiator<T> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::Negotiator;
+    use super::AcceptNegotiator;
 
     #[test]
     fn new() {
         assert_eq!(
-            Negotiator::new(["text/plain"]).unwrap().supported,
+            AcceptNegotiator::new(["text/plain"]).unwrap().supported,
             vec![(
                 "text".to_owned(),
                 "plain".to_owned(),
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn parse_sort() {
         assert_eq!(
-            Negotiator::<&str>::parse_sort_header(
+            AcceptNegotiator::<&str>::parse_sort_header(
                 "text/*, text/plain, text/plain;format=flowed, */*"
             )
             .unwrap(),
@@ -111,7 +111,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::<&str>::parse_sort_header(
+            AcceptNegotiator::<&str>::parse_sort_header(
                 "text/*, text/plain, text/plain;format=flowed, */*"
             )
             .unwrap(),
@@ -124,7 +124,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::<&str>::parse_sort_header(
+            AcceptNegotiator::<&str>::parse_sort_header(
                 "text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid"
             )
             .unwrap(),
@@ -138,14 +138,14 @@ mod tests {
 
     #[test]
     fn negotiate() {
-        assert!(Negotiator::new(["application/json"])
+        assert!(AcceptNegotiator::new(["application/json"])
             .unwrap()
             .negotiate("text/html")
             .unwrap()
             .is_none());
 
         assert_eq!(
-            Negotiator::new(["application/json"])
+            AcceptNegotiator::new(["application/json"])
                 .unwrap()
                 .negotiate("application/json")
                 .unwrap(),
@@ -153,7 +153,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["text/plain", "application/json"])
+            AcceptNegotiator::new(["text/plain", "application/json"])
                 .unwrap()
                 .negotiate("application/json")
                 .unwrap(),
@@ -161,7 +161,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["text/plain", "application/json"])
+            AcceptNegotiator::new(["text/plain", "application/json"])
                 .unwrap()
                 .negotiate("audio/mp3, application/json")
                 .unwrap(),
@@ -169,7 +169,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["application/json", "text/plain"])
+            AcceptNegotiator::new(["application/json", "text/plain"])
                 .unwrap()
                 .negotiate("text/plain, application/json")
                 .unwrap(),
@@ -177,7 +177,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["text/html;level=3", "text/html;level=2", "image/jpeg", "text/plain", "text/html", "text/html;level=1"])
+            AcceptNegotiator::new(["text/html;level=3", "text/html;level=2", "image/jpeg", "text/plain", "text/html", "text/html;level=1"])
                 .unwrap()
                 .negotiate("text/*;q=0.3, text/html;q=0.7, text/html;level=1, text/html;level=2;q=0.4, */*;q=0.5")
                 .unwrap(),
@@ -185,7 +185,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["text/plain", "application/json"])
+            AcceptNegotiator::new(["text/plain", "application/json"])
                 .unwrap()
                 .negotiate("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .unwrap(),
@@ -193,7 +193,7 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::new(["application/json", "text/plain"])
+            AcceptNegotiator::new(["application/json", "text/plain"])
                 .unwrap()
                 .negotiate("text/plain;q=0.9, */*")
                 .unwrap(),
