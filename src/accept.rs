@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
+#[cfg(feature = "axum")]
 use std::{
-    collections::BTreeMap,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -8,6 +9,7 @@ use std::{
 use async_trait::async_trait;
 #[cfg(feature = "axum")]
 use axum_core::extract::{FromRequest, RequestParts};
+#[cfg(feature = "axum")]
 use http::StatusCode;
 #[cfg(feature = "axum")]
 use http::{header, Request};
@@ -116,6 +118,7 @@ where
 }
 
 #[cfg(feature = "axum")]
+#[derive(Clone, Debug)]
 pub struct AcceptNegotiatorService<S, T> {
     inner: S,
     negotiator: Arc<AcceptNegotiator<T>>,

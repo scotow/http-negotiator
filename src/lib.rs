@@ -3,7 +3,7 @@ mod error;
 
 use std::{borrow::Borrow, collections::BTreeMap};
 
-pub use accept::AcceptNegotiator;
+pub use accept::*;
 pub use error::Error;
 
 pub trait AsMime {
