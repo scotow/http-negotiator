@@ -1,24 +1,6 @@
 use std::collections::BTreeMap;
-#[cfg(feature = "axum")]
-use std::{
-    sync::Arc,
-    task::{Context, Poll},
-};
 
-#[cfg(feature = "axum")]
-use async_trait::async_trait;
-#[cfg(feature = "axum")]
-use axum_core::extract::{FromRequest, RequestParts};
-#[cfg(feature = "axum")]
-use http::StatusCode;
-#[cfg(feature = "axum")]
-use http::{header, Request};
-#[cfg(feature = "axum")]
-use tower_layer::Layer;
-#[cfg(feature = "axum")]
-use tower_service::Service;
-
-use crate::{extract_quality, matches, mime_score, parse_mime, AsMime, Error};
+use crate::{extract_quality, matches_wildcard, mime_precision_score, parse_mime, AsMime, Error};
 
 #[derive(Clone, Debug)]
 pub struct AcceptNegotiator<T> {
@@ -60,8 +42,8 @@ impl<T> AcceptNegotiator<T> {
 
         for mime in mimes {
             for supported in &self.supported {
-                if matches(&supported.0, mime.0)
-                    && matches(&supported.1, mime.1)
+                if matches_wildcard(&supported.0, mime.0)
+                    && matches_wildcard(&supported.1, mime.1)
                     && supported
                         .2
                         .iter()
@@ -90,7 +72,9 @@ impl<T> AcceptNegotiator<T> {
 
         mimes.sort_by(|m1, m2| {
             m1.3.total_cmp(&m2.3)
-                .then_with(|| mime_score(&m1.0, &m1.1).cmp(&mime_score(&m2.0, &m2.1)))
+                .then_with(|| {
+                    mime_precision_score(&m1.0, &m1.1).cmp(&mime_precision_score(&m2.0, &m2.1))
+                })
                 .then_with(|| m1.2.len().cmp(&m2.2.len()))
                 .reverse()
         });
@@ -99,85 +83,96 @@ impl<T> AcceptNegotiator<T> {
 }
 
 #[cfg(feature = "axum")]
-impl<S, T> Layer<S> for AcceptNegotiator<T>
-where
-    T: Clone,
-{
-    type Service = AcceptNegotiatorService<S, T>;
+pub(crate) mod axum {
+    use std::{
+        sync::Arc,
+        task::{Context, Poll},
+    };
 
-    fn layer(&self, inner: S) -> Self::Service {
-        if self.len() == 0 {
-            panic!("negotiator must not be empty");
-        }
+    use async_trait::async_trait;
+    use axum_core::extract::{FromRequest, RequestParts};
+    use http::{header, Request, StatusCode};
+    use tower_layer::Layer;
+    use tower_service::Service;
 
-        AcceptNegotiatorService {
-            inner,
-            negotiator: Arc::new(self.clone()),
-        }
-    }
-}
+    use super::AcceptNegotiator;
 
-#[cfg(feature = "axum")]
-#[derive(Clone, Debug)]
-pub struct AcceptNegotiatorService<S, T> {
-    inner: S,
-    negotiator: Arc<AcceptNegotiator<T>>,
-}
+    impl<S, T> Layer<S> for AcceptNegotiator<T>
+    where
+        T: Clone,
+    {
+        type Service = AcceptNegotiatorService<S, T>;
 
-#[cfg(feature = "axum")]
-impl<ResBody, S, T> Service<Request<ResBody>> for AcceptNegotiatorService<S, T>
-where
-    S: Service<Request<ResBody>>,
-    T: Clone + Send + Sync + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    #[inline]
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
-        req.extensions_mut().insert(Arc::clone(&self.negotiator));
-        self.inner.call(req)
-    }
-}
-
-#[cfg(feature = "axum")]
-pub struct Negotiation<T>(pub T);
-
-#[cfg(feature = "axum")]
-#[async_trait]
-impl<B, T> FromRequest<B> for Negotiation<T>
-where
-    T: Send + Sync + Clone + 'static,
-    B: Send,
-{
-    type Rejection = (StatusCode, String);
-
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let negotiator = req.extensions().get::<Arc<AcceptNegotiator<T>>>().ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Missing negotiator registration".to_owned(),
-        ))?;
-        let header = req.headers().get(header::ACCEPT);
-        let res = match header {
-            Some(header) => {
-                let header = header
-                    .to_str()
-                    .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid Accept header".to_owned()))?;
-                negotiator
-                    .negotiate(header)
-                    .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?
+        fn layer(&self, inner: S) -> Self::Service {
+            if self.len() == 0 {
+                panic!("negotiator must not be empty");
             }
-            None => None,
-        };
 
-        Ok(Negotiation(
-            res.unwrap_or_else(|| negotiator.unwrap_first()).clone(),
-        ))
+            AcceptNegotiatorService {
+                inner,
+                negotiator: Arc::new(self.clone()),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct AcceptNegotiatorService<S, T> {
+        inner: S,
+        negotiator: Arc<AcceptNegotiator<T>>,
+    }
+
+    impl<ResBody, S, T> Service<Request<ResBody>> for AcceptNegotiatorService<S, T>
+    where
+        S: Service<Request<ResBody>>,
+        T: Clone + Send + Sync + 'static,
+    {
+        type Response = S::Response;
+        type Error = S::Error;
+        type Future = S::Future;
+
+        #[inline]
+        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.inner.poll_ready(cx)
+        }
+
+        fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
+            req.extensions_mut().insert(Arc::clone(&self.negotiator));
+            self.inner.call(req)
+        }
+    }
+
+    pub struct Negotiation<T>(pub T);
+
+    #[async_trait]
+    impl<B, T> FromRequest<B> for Negotiation<T>
+    where
+        T: Send + Sync + Clone + 'static,
+        B: Send,
+    {
+        type Rejection = (StatusCode, String);
+
+        async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+            let negotiator = req.extensions().get::<Arc<AcceptNegotiator<T>>>().ok_or((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing negotiator registration".to_owned(),
+            ))?;
+            let header = req.headers().get(header::ACCEPT);
+            let res = match header {
+                Some(header) => {
+                    let header = header.to_str().map_err(|_| {
+                        (StatusCode::BAD_REQUEST, "Invalid Accept header".to_owned())
+                    })?;
+                    negotiator
+                        .negotiate(header)
+                        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?
+                }
+                None => None,
+            };
+
+            Ok(Negotiation(
+                res.unwrap_or_else(|| negotiator.unwrap_first()).clone(),
+            ))
+        }
     }
 }
 

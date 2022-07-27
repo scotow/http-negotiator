@@ -1,8 +1,11 @@
 mod accept;
+mod encoding;
 mod error;
 
-use std::{borrow::Borrow, collections::BTreeMap};
+use std::{borrow::Borrow, collections::BTreeMap, ops::Deref};
 
+#[cfg(feature = "axum")]
+pub use accept::axum::*;
 pub use accept::*;
 pub use error::Error;
 
@@ -50,7 +53,11 @@ where
     Ok((main.into(), sub.into(), params))
 }
 
-fn extract_quality(params: &mut BTreeMap<&str, &str>) -> Result<f32, Error> {
+fn extract_quality<K, V>(params: &mut BTreeMap<K, V>) -> Result<f32, Error>
+where
+    K: Borrow<str> + Ord,
+    V: Deref<Target = str>,
+{
     params
         .remove("q")
         .map(|q| {
@@ -61,7 +68,7 @@ fn extract_quality(params: &mut BTreeMap<&str, &str>) -> Result<f32, Error> {
         .map(|q| q.unwrap_or(1.))
 }
 
-fn mime_score(main: &str, sub: &str) -> u8 {
+fn mime_precision_score(main: &str, sub: &str) -> u8 {
     match (main, sub) {
         ("*", "*") => 0,
         (_, "*") => 1,
@@ -69,7 +76,7 @@ fn mime_score(main: &str, sub: &str) -> u8 {
     }
 }
 
-fn matches(specific: &str, maybe_wildcard: &str) -> bool {
+fn matches_wildcard(specific: &str, maybe_wildcard: &str) -> bool {
     specific == maybe_wildcard || maybe_wildcard == "*"
 }
 
