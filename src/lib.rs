@@ -1,6 +1,7 @@
 mod accept;
 mod encoding;
 mod error;
+mod v2;
 
 use std::{borrow::Borrow, collections::BTreeMap, ops::Deref};
 
