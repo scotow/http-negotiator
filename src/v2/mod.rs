@@ -37,15 +37,18 @@ impl<'a> NegotiationType<'a> for ContentTypeNegotiation {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        mimes.sort_by(|m1, m2| {
-            m1.1.total_cmp(&m2.1)
-                .then_with(|| {
-                    mime_precision_score(&m1.0 .0, &m1.0 .1)
-                        .cmp(&mime_precision_score(&m2.0 .0, &m2.0 .1))
-                })
-                .then_with(|| m1.0 .2.len().cmp(&m2.0 .2.len()))
-                .reverse()
-        });
+        mimes.sort_by(
+            |((main_lhs, sub_lhs, params_lhs), q_lhs), ((main_rhs, sub_rhs, params_rhs), q_rhs)| {
+                q_lhs
+                    .total_cmp(&q_rhs)
+                    .then_with(|| {
+                        mime_precision_score(main_lhs, sub_lhs)
+                            .cmp(&mime_precision_score(main_rhs, sub_rhs))
+                    })
+                    .then_with(|| params_lhs.len().cmp(&params_rhs.len()))
+                    .reverse()
+            },
+        );
         Ok(mimes)
     }
 
