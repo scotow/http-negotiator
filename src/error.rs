@@ -7,11 +7,13 @@ pub enum Error {
     #[error("missing mime type separator \"/\"")]
     MissingSeparator,
     #[error("too many mime type parts")]
-    TooManyPart,
-    #[error("main part cannot be a wildcard if the sub part is not one")]
+    TooManyParts,
+    #[error("main part cannot be a wildcard")]
     InvalidWildcard,
     #[error("malformed header")]
     InvalidHeader,
+    #[error("parameters not allowed")]
+    ParamsNotAllowed,
     #[error("quality param not allowed")]
     QualityNotAllowed,
     #[error("invalid quality param")]
