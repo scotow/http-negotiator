@@ -18,7 +18,7 @@ impl NegotiationType for EncodingNegotiation {
     }
 
     fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error> {
-        Ok(header
+        let mut methods = header
             .split(',')
             .map(|entry| {
                 let mut parts = entry.split(';').map(str::trim);
@@ -36,7 +36,9 @@ impl NegotiationType for EncodingNegotiation {
                 };
                 Ok((main.to_owned(), q))
             })
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()?;
+        methods.sort_by(|(_, q1), (_, q2)| q1.total_cmp(q2).reverse());
+        Ok(methods)
     }
 
     fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
@@ -47,7 +49,7 @@ impl NegotiationType for EncodingNegotiation {
 #[cfg(test)]
 mod tests {
     use super::EncodingNegotiation;
-    use crate::{Error, NegotiationType, Negotiator};
+    use crate::{Error, Negotiator};
 
     #[test]
     fn new() {
@@ -91,9 +93,33 @@ mod tests {
         );
 
         assert_eq!(
-            Negotiator::<EncodingNegotiation, _>::new(["gzip"])
+            Negotiator::<EncodingNegotiation, _>::new(["gzip", "compress"])
                 .unwrap()
                 .negotiate("compress, gzip")
+                .unwrap(),
+            Some(&"compress")
+        );
+
+        assert_eq!(
+            Negotiator::<EncodingNegotiation, _>::new(["gzip", "compress"])
+                .unwrap()
+                .negotiate("compress; q=1, gzip")
+                .unwrap(),
+            Some(&"compress")
+        );
+
+        assert_eq!(
+            Negotiator::<EncodingNegotiation, _>::new(["gzip", "compress"])
+                .unwrap()
+                .negotiate("compress; q=0.9, gzip")
+                .unwrap(),
+            Some(&"gzip")
+        );
+
+        assert_eq!(
+            Negotiator::<EncodingNegotiation, _>::new(["gzip", "compress"])
+                .unwrap()
+                .negotiate("compress; q=0.8, gzip; q=0.9")
                 .unwrap(),
             Some(&"gzip")
         );
