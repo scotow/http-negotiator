@@ -44,6 +44,11 @@ impl NegotiationType for EncodingNegotiation {
     fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
         matches_wildcard(supported, header)
     }
+
+    #[cfg(feature = "axum")]
+    fn associated_header() -> http::header::HeaderName {
+        http::header::ACCEPT_ENCODING
+    }
 }
 
 #[cfg(test)]

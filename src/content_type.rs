@@ -42,6 +42,11 @@ impl NegotiationType for ContentTypeNegotiation {
             && matches_wildcard(&supported.1, &header.1)
             && supported.2 == header.2
     }
+
+    #[cfg(feature = "axum")]
+    fn associated_header() -> http::header::HeaderName {
+        http::header::ACCEPT
+    }
 }
 
 fn parse_mime<'a, T>(mime: &'a str, from_header: bool) -> Result<(T, T, BTreeMap<T, T>), Error>

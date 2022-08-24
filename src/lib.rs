@@ -28,6 +28,9 @@ pub trait NegotiationType {
     fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error>;
 
     fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool;
+
+    #[cfg(feature = "axum")]
+    fn associated_header() -> http::header::HeaderName;
 }
 
 #[derive(Clone, Debug)]
@@ -106,7 +109,7 @@ pub(crate) mod axum {
 
     use async_trait::async_trait;
     use axum_core::extract::{FromRequest, RequestParts};
-    use http::{header, Request, StatusCode};
+    use http::{Request, StatusCode};
     use tower_layer::Layer;
     use tower_service::Service;
 
@@ -184,11 +187,11 @@ pub(crate) mod axum {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Missing negotiator registration".to_owned(),
                 ))?);
-            let header = req.headers().get(header::ACCEPT);
+            let header = req.headers().get(N::associated_header());
             let res = match header {
                 Some(header) => {
                     let header = header.to_str().map_err(|_| {
-                        (StatusCode::BAD_REQUEST, "Invalid Accept header".to_owned())
+                        (StatusCode::BAD_REQUEST, "Invalid accept header".to_owned())
                     })?;
                     negotiator
                         .negotiate(header)

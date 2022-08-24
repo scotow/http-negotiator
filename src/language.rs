@@ -49,6 +49,11 @@ impl NegotiationType for LanguageNegotiation {
     fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
         supported.0 == header.0 && matches_wildcard(&supported.1, &header.1)
     }
+
+    #[cfg(feature = "axum")]
+    fn associated_header() -> http::header::HeaderName {
+        http::header::ACCEPT_LANGUAGE
+    }
 }
 
 #[cfg(test)]
