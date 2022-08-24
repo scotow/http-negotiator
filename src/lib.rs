@@ -99,6 +99,7 @@ fn matches_wildcard(specific: &str, maybe_wildcard: &str) -> bool {
 #[cfg(feature = "axum")]
 pub(crate) mod axum {
     use std::{
+        marker::PhantomData,
         sync::Arc,
         task::{Context, Poll},
     };
@@ -159,13 +160,19 @@ pub(crate) mod axum {
         }
     }
 
-    pub struct Negotiation<N, T>(pub N, pub T);
+    pub struct Negotiation<N, T>(PhantomData<N>, T);
+
+    impl<N, T> Negotiation<N, T> {
+        pub fn into_inner(self) -> T {
+            self.1
+        }
+    }
 
     #[async_trait]
     impl<B, N, T> FromRequest<B> for Negotiation<N, T>
     where
         B: Send,
-        N: NegotiationType + Default + 'static,
+        N: NegotiationType + 'static,
         <N as NegotiationType>::Parsed: Send + Sync,
         T: Send + Sync + Clone + AsNegotiationStr + 'static,
     {
@@ -191,7 +198,7 @@ pub(crate) mod axum {
             };
 
             Ok(Negotiation(
-                N::default(),
+                PhantomData,
                 res.unwrap_or_else(|| negotiator.unwrap_first()).clone(),
             ))
         }

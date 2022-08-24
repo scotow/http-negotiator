@@ -1,6 +1,6 @@
 use crate::{matches_wildcard, AsNegotiationStr, Error, NegotiationType};
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct LanguageNegotiation;
 
 impl NegotiationType for LanguageNegotiation {
