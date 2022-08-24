@@ -84,7 +84,7 @@ where
     let mut parts = mime.split(';');
     let left = parts.next().ok_or(Error::InvalidHeader)?.trim();
 
-    let (main, sub) = left.split_once('/').ok_or(Error::MissingSeparator)?;
+    let (main, sub) = left.split_once('/').ok_or(Error::MissingSeparator('/'))?;
     if sub.contains('/') {
         return Err(Error::TooManyParts);
     }

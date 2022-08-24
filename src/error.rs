@@ -4,9 +4,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum Error {
-    #[error("missing mime type separator \"/\"")]
-    MissingSeparator,
-    #[error("too many mime type parts")]
+    #[error("missing separator \"{0}\"")]
+    MissingSeparator(char),
+    #[error("too many parts")]
     TooManyParts,
     #[error("main part cannot be a wildcard")]
     InvalidWildcard,
