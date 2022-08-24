@@ -1,4 +1,4 @@
-use crate::{matches_wildcard, AsMime, Error, NegotiationType};
+use crate::{matches_wildcard, AsNegotiationStr, Error, NegotiationType};
 
 #[derive(Clone, Default, Debug)]
 pub struct EncodingNegotiation;
@@ -6,8 +6,8 @@ pub struct EncodingNegotiation;
 impl NegotiationType for EncodingNegotiation {
     type Parsed = String;
 
-    fn parse_elem<M: AsMime>(input: &M) -> Result<Self::Parsed, Error> {
-        let input = input.as_mime();
+    fn parse_elem<M: AsNegotiationStr>(input: &M) -> Result<Self::Parsed, Error> {
+        let input = input.as_str();
         if input.contains(';') {
             return Err(Error::ParamsNotAllowed);
         }

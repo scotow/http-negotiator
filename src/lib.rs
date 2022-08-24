@@ -1,21 +1,21 @@
-mod accept;
+mod content_type;
 mod encoding;
 mod error;
 mod language;
 
 use std::{borrow::Borrow, collections::BTreeMap, ops::Deref};
 
-pub use accept::*;
 #[cfg(feature = "axum")]
 pub use axum::*;
+pub use content_type::*;
 pub use error::Error;
 
-pub trait AsMime {
-    fn as_mime(&self) -> &str;
+pub trait AsNegotiationStr {
+    fn as_str(&self) -> &str;
 }
 
-impl<T: AsRef<str>> AsMime for T {
-    fn as_mime(&self) -> &str {
+impl<T: AsRef<str>> AsNegotiationStr for T {
+    fn as_str(&self) -> &str {
         self.as_ref()
     }
 }
@@ -23,7 +23,7 @@ impl<T: AsRef<str>> AsMime for T {
 pub trait NegotiationType {
     type Parsed;
 
-    fn parse_elem<M: AsMime>(input: &M) -> Result<Self::Parsed, Error>;
+    fn parse_elem<M: AsNegotiationStr>(input: &M) -> Result<Self::Parsed, Error>;
 
     fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error>;
 
@@ -51,7 +51,7 @@ where
 impl<'a, N, T> Negotiator<N, T>
 where
     N: NegotiationType,
-    T: AsMime,
+    T: AsNegotiationStr,
 {
     pub fn new<I>(iter: I) -> Result<Self, Error>
     where
@@ -66,49 +66,15 @@ where
     }
 
     pub fn negotiate(&self, header: &str) -> Result<Option<&T>, Error> {
-        for mime in N::parse_sort_header(header)? {
+        for header_parsed in N::parse_sort_header(header)? {
             for (supported_parsed, value) in &self.supported {
-                if N::is_match(supported_parsed, &mime.0) {
+                if N::is_match(supported_parsed, &header_parsed.0) {
                     return Ok(Some(value));
                 }
             }
         }
         Ok(None)
     }
-}
-
-fn parse_mime<'a, T>(mime: &'a str, from_header: bool) -> Result<(T, T, BTreeMap<T, T>), Error>
-where
-    T: From<&'a str> + Ord + Borrow<str>,
-{
-    let mut parts = mime.split(';');
-    let left = parts.next().ok_or(Error::InvalidHeader)?.trim();
-
-    let (main, sub) = left.split_once('/').ok_or(Error::MissingSeparator('/'))?;
-    if sub.contains('/') {
-        return Err(Error::TooManyParts);
-    }
-    if from_header {
-        if main == "*" && sub != "*" {
-            return Err(Error::InvalidWildcard);
-        }
-    } else {
-        if main == "*" || sub == "*" {
-            return Err(Error::InvalidWildcard);
-        }
-    }
-
-    let params = parts
-        .map(|param| {
-            let (k, v) = param.trim().split_once('=').ok_or(Error::InvalidHeader)?;
-            Ok((k.into(), v.into()))
-        })
-        .collect::<Result<BTreeMap<_, _>, _>>()?;
-    if !from_header && params.contains_key("q") {
-        return Err(Error::QualityNotAllowed);
-    }
-
-    Ok((main.into(), sub.into(), params))
 }
 
 fn extract_quality<K, V>(params: &mut BTreeMap<K, V>) -> Result<f32, Error>
@@ -124,14 +90,6 @@ where
         })
         .transpose()
         .map(|q| q.unwrap_or(1.))
-}
-
-fn mime_precision_score(main: &str, sub: &str) -> u8 {
-    match (main, sub) {
-        ("*", "*") => 0,
-        (_, "*") => 1,
-        _ => 2,
-    }
 }
 
 fn matches_wildcard(specific: &str, maybe_wildcard: &str) -> bool {
@@ -151,7 +109,7 @@ pub(crate) mod axum {
     use tower_layer::Layer;
     use tower_service::Service;
 
-    use crate::{AsMime, NegotiationType, Negotiator};
+    use crate::{AsNegotiationStr, NegotiationType, Negotiator};
 
     impl<S, N, T> Layer<S> for Negotiator<N, T>
     where
@@ -209,7 +167,7 @@ pub(crate) mod axum {
         B: Send,
         N: NegotiationType + Default + 'static,
         <N as NegotiationType>::Parsed: Send + Sync,
-        T: Send + Sync + Clone + AsMime + 'static,
+        T: Send + Sync + Clone + AsNegotiationStr + 'static,
     {
         type Rejection = (StatusCode, String);
 
@@ -237,66 +195,5 @@ pub(crate) mod axum {
                 res.unwrap_or_else(|| negotiator.unwrap_first()).clone(),
             ))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use super::parse_mime;
-    use crate::Error;
-
-    #[test]
-    fn parse() {
-        // Basic.
-        assert_eq!(
-            parse_mime("text/plain", false).unwrap(),
-            ("text", "plain", BTreeMap::default()),
-        );
-
-        // With one param.
-        assert_eq!(
-            parse_mime("text/html;level=1", false).unwrap(),
-            ("text", "html", BTreeMap::from([("level", "1")]),)
-        );
-
-        // Param with space.
-        assert_eq!(
-            parse_mime("text/html; level=1", false).unwrap(),
-            ("text", "html", BTreeMap::from([("level", "1")]),)
-        );
-
-        // Multiple params.
-        assert_eq!(
-            parse_mime("text/html;level=1;origin=EU", false).unwrap(),
-            (
-                "text",
-                "html",
-                BTreeMap::from([("level", "1"), ("origin", "EU")]),
-            )
-        );
-
-        assert_eq!(
-            parse_mime::<&str>("text/plain;q=1", false).unwrap_err(),
-            Error::QualityNotAllowed,
-        );
-
-        assert_eq!(
-            parse_mime::<&str>("*/plain", true).unwrap_err(),
-            Error::InvalidWildcard
-        );
-
-        assert_eq!(
-            parse_mime::<&str>("text/*", false).unwrap_err(),
-            Error::InvalidWildcard
-        );
-
-        assert!(parse_mime::<&str>("text/*", true).is_ok());
-
-        assert_eq!(
-            parse_mime::<&str>("text/plain/extra", true).unwrap_err(),
-            Error::TooManyParts
-        );
     }
 }
