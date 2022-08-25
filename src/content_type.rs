@@ -2,7 +2,7 @@ use std::{borrow::Borrow, collections::BTreeMap};
 
 use crate::{extract_quality, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct ContentTypeNegotiation;
 
 impl NegotiationType for ContentTypeNegotiation {

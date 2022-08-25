@@ -103,6 +103,7 @@ fn matches_wildcard(specific: &str, maybe_wildcard: &str) -> bool {
 pub(crate) mod axum {
     use std::{
         marker::PhantomData,
+        ops::Deref,
         sync::Arc,
         task::{Context, Poll},
     };
@@ -163,11 +164,20 @@ pub(crate) mod axum {
         }
     }
 
+    #[derive(Clone, Debug)]
     pub struct Negotiation<N, T>(PhantomData<N>, T);
 
     impl<N, T> Negotiation<N, T> {
         pub fn into_inner(self) -> T {
             self.1
+        }
+    }
+
+    impl<N, T> Deref for Negotiation<N, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.1
         }
     }
 
