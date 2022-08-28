@@ -25,7 +25,7 @@ impl NegotiationType for ContentTypeNegotiation {
         mimes.sort_by(
             |((main_lhs, sub_lhs, params_lhs), q_lhs), ((main_rhs, sub_rhs, params_rhs), q_rhs)| {
                 q_lhs
-                    .total_cmp(&q_rhs)
+                    .total_cmp(q_rhs)
                     .then_with(|| {
                         mime_precision_score(main_lhs, sub_lhs)
                             .cmp(&mime_precision_score(main_rhs, sub_rhs))
@@ -64,10 +64,8 @@ where
         if main == "*" && sub != "*" {
             return Err(Error::InvalidWildcard);
         }
-    } else {
-        if main == "*" || sub == "*" {
-            return Err(Error::InvalidWildcard);
-        }
+    } else if main == "*" || sub == "*" {
+        return Err(Error::InvalidWildcard);
     }
 
     let params = parts

@@ -23,7 +23,7 @@ impl NegotiationType for LanguageNegotiation {
             .map(|entry| {
                 let mut parts = entry.split(';').map(str::trim);
                 let left = parts.next().ok_or(Error::InvalidHeader)?;
-                let (main, sub) = left.split_once('-').unwrap_or_else(|| (left, "*"));
+                let (main, sub) = left.split_once('-').unwrap_or((left, "*"));
                 let q = match parts.next() {
                     Some(first_param) => {
                         let (k, v) = first_param.split_once('=').ok_or(Error::InvalidHeader)?;

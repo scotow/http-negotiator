@@ -38,7 +38,7 @@ pub struct Negotiator<N: NegotiationType, T> {
     supported: Vec<(N::Parsed, T)>,
 }
 
-impl<'a, N, T> Negotiator<N, T>
+impl<N, T> Negotiator<N, T>
 where
     N: NegotiationType,
 {
@@ -46,12 +46,16 @@ where
         self.supported.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.supported.is_empty()
+    }
+
     pub fn unwrap_first(&self) -> &T {
         &self.supported[0].1
     }
 }
 
-impl<'a, N, T> Negotiator<N, T>
+impl<N, T> Negotiator<N, T>
 where
     N: NegotiationType,
     T: AsNegotiationStr,
@@ -125,7 +129,7 @@ pub(crate) mod axum {
         type Service = NegotiatorService<S, N, T>;
 
         fn layer(&self, inner: S) -> Self::Service {
-            if self.len() == 0 {
+            if self.is_empty() {
                 panic!("negotiator must not be empty");
             }
 
