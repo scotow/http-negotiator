@@ -8,7 +8,9 @@ use std::{borrow::Borrow, collections::BTreeMap, ops::Deref};
 #[cfg(feature = "axum")]
 pub use axum::*;
 pub use content_type::*;
+pub use encoding::*;
 pub use error::Error;
+pub use language::*;
 
 pub trait AsNegotiationStr {
     fn as_str(&self) -> &str;
@@ -25,9 +27,10 @@ pub trait NegotiationType {
 
     fn parse_elem<M: AsNegotiationStr>(input: &M) -> Result<Self::Parsed, Error>;
 
-    fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error>;
-
-    fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool;
+    fn parse_negotiate_header<'a, T>(
+        supported: &'a [(Self::Parsed, T)],
+        header: &str,
+    ) -> Result<Option<&'a T>, Error>;
 
     #[cfg(feature = "axum")]
     fn associated_header() -> http::header::HeaderName;
@@ -73,15 +76,28 @@ where
     }
 
     pub fn negotiate(&self, header: &str) -> Result<Option<&T>, Error> {
-        for header_parsed in N::parse_sort_header(header)? {
-            for (supported_parsed, value) in &self.supported {
-                if N::is_match(supported_parsed, &header_parsed.0) {
-                    return Ok(Some(value));
-                }
-            }
-        }
-        Ok(None)
+        N::parse_negotiate_header(&self.supported, header)
     }
+}
+
+fn match_first<'a, 'b, S, T, H, F, I, J>(supported: I, from_header: J, mut f: F) -> Option<&'a T>
+where
+    S: 'a,
+    H: 'b + ?Sized,
+    I: IntoIterator<Item = &'a (S, T)> + Clone,
+    J: IntoIterator<Item = &'b H>,
+    F: FnMut(&'a S, &'b H) -> bool,
+{
+    from_header.into_iter().find_map(|h| {
+        supported
+            .clone()
+            .into_iter()
+            .find_map(|(s, v)| f(s, h).then(|| v))
+    })
+}
+
+fn matches_wildcard<L: AsRef<str>, R: AsRef<str>>(specific: L, maybe_wildcard: R) -> bool {
+    specific.as_ref() == maybe_wildcard.as_ref() || maybe_wildcard.as_ref() == "*"
 }
 
 fn extract_quality<K, V>(params: &mut BTreeMap<K, V>) -> Result<f32, Error>
@@ -97,10 +113,6 @@ where
         })
         .transpose()
         .map(|q| q.unwrap_or(1.))
-}
-
-fn matches_wildcard(specific: &str, maybe_wildcard: &str) -> bool {
-    specific == maybe_wildcard || maybe_wildcard == "*"
 }
 
 #[cfg(feature = "axum")]

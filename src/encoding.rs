@@ -1,4 +1,4 @@
-use crate::{matches_wildcard, AsNegotiationStr, Error, NegotiationType};
+use crate::{match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
 
 #[derive(Copy, Clone, Debug)]
 pub struct EncodingNegotiation;
@@ -17,7 +17,10 @@ impl NegotiationType for EncodingNegotiation {
         Ok(input.to_owned())
     }
 
-    fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error> {
+    fn parse_negotiate_header<'a, T>(
+        supported: &'a [(Self::Parsed, T)],
+        header: &str,
+    ) -> Result<Option<&'a T>, Error> {
         let mut methods = header
             .split(',')
             .map(|entry| {
@@ -34,15 +37,15 @@ impl NegotiationType for EncodingNegotiation {
                     }
                     None => 1.,
                 };
-                Ok((main.to_owned(), q))
+                Ok((main, q))
             })
             .collect::<Result<Vec<_>, _>>()?;
         methods.sort_by(|(_, q1), (_, q2)| q1.total_cmp(q2).reverse());
-        Ok(methods)
-    }
-
-    fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
-        matches_wildcard(supported, header)
+        Ok(match_first(
+            supported,
+            methods.iter().map(|(m, _q)| m),
+            matches_wildcard,
+        ))
     }
 
     #[cfg(feature = "axum")]

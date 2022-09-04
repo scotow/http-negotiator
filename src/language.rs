@@ -1,4 +1,4 @@
-use crate::{matches_wildcard, AsNegotiationStr, Error, NegotiationType};
+use crate::{match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
 
 #[derive(Copy, Clone, Debug)]
 pub struct LanguageNegotiation;
@@ -17,7 +17,10 @@ impl NegotiationType for LanguageNegotiation {
             .map(|(main, sub)| (main.to_owned(), sub.to_owned()))
     }
 
-    fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error> {
+    fn parse_negotiate_header<'a, T>(
+        supported: &'a [(Self::Parsed, T)],
+        header: &str,
+    ) -> Result<Option<&'a T>, Error> {
         let mut languages = header
             .split(',')
             .map(|entry| {
@@ -35,19 +38,19 @@ impl NegotiationType for LanguageNegotiation {
                     }
                     None => 1.,
                 };
-                Ok(((main.to_owned(), sub.to_owned()), q))
+                Ok(((main, sub), q))
             })
             .collect::<Result<Vec<_>, _>>()?;
         languages.sort_by(|((_, s1), q1), ((_, s2), q2)| {
             q1.total_cmp(q2)
-                .then_with(|| (s2 == "*").cmp(&(s1 == "*")))
+                .then_with(|| (*s2 == "*").cmp(&(*s1 == "*")))
                 .reverse()
         });
-        Ok(languages)
-    }
-
-    fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
-        supported.0 == header.0 && matches_wildcard(&supported.1, &header.1)
+        Ok(match_first(
+            supported,
+            languages.iter().map(|(l, _q)| l),
+            |s, h| s.0 == h.0 && matches_wildcard(&s.1, &h.1),
+        ))
     }
 
     #[cfg(feature = "axum")]

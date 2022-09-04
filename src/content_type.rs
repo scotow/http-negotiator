@@ -1,6 +1,8 @@
 use std::{borrow::Borrow, collections::BTreeMap};
 
-use crate::{extract_quality, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
+use crate::{
+    extract_quality, match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub struct ContentTypeNegotiation;
@@ -12,35 +14,23 @@ impl NegotiationType for ContentTypeNegotiation {
         parse_mime(raw.as_str(), false)
     }
 
-    fn parse_sort_header(header: &str) -> Result<Vec<(Self::Parsed, f32)>, Error> {
-        let mut mimes = header
-            .split(',')
-            .map(|m| {
-                let (main, sub, mut params) = parse_mime::<String>(m.trim(), true)?;
-                let q = extract_quality(&mut params)?;
-                Ok(((main, sub, params), q))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        mimes.sort_by(
-            |((main_lhs, sub_lhs, params_lhs), q_lhs), ((main_rhs, sub_rhs, params_rhs), q_rhs)| {
-                q_lhs
-                    .total_cmp(q_rhs)
-                    .then_with(|| {
-                        mime_precision_score(main_lhs, sub_lhs)
-                            .cmp(&mime_precision_score(main_rhs, sub_rhs))
-                    })
-                    .then_with(|| params_lhs.len().cmp(&params_rhs.len()))
-                    .reverse()
+    fn parse_negotiate_header<'a, T>(
+        supported: &'a [(Self::Parsed, T)],
+        header: &str,
+    ) -> Result<Option<&'a T>, Error> {
+        let mimes = parse_sort_header(header)?;
+        Ok(match_first(
+            supported,
+            mimes.iter().map(|(ct, _q)| ct),
+            |s, h| {
+                matches_wildcard(&s.0, &h.0)
+                    && matches_wildcard(&s.1, &h.1)
+                    && s.2
+                        .iter()
+                        .map(|(k, v)| (k.as_str(), v.as_str()))
+                        .eq(h.2.iter().map(|(k, v)| (*k, *v)))
             },
-        );
-        Ok(mimes)
-    }
-
-    fn is_match(supported: &Self::Parsed, header: &Self::Parsed) -> bool {
-        matches_wildcard(&supported.0, &header.0)
-            && matches_wildcard(&supported.1, &header.1)
-            && supported.2 == header.2
+        ))
     }
 
     #[cfg(feature = "axum")]
@@ -81,6 +71,33 @@ where
     Ok((main.into(), sub.into(), params))
 }
 
+#[allow(clippy::type_complexity)]
+fn parse_sort_header(
+    header: &str,
+) -> Result<Vec<((&str, &str, BTreeMap<&str, &str>), f32)>, Error> {
+    let mut mimes = header
+        .split(',')
+        .map(|m| {
+            let (main, sub, mut params) = parse_mime::<&str>(m.trim(), true)?;
+            let q = extract_quality(&mut params)?;
+            Ok(((main, sub, params), q))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    mimes.sort_by(
+        |((main_lhs, sub_lhs, params_lhs), q_lhs), ((main_rhs, sub_rhs, params_rhs), q_rhs)| {
+            q_lhs
+                .total_cmp(q_rhs)
+                .then_with(|| {
+                    mime_precision_score(main_lhs, sub_lhs)
+                        .cmp(&mime_precision_score(main_rhs, sub_rhs))
+                })
+                .then_with(|| params_lhs.len().cmp(&params_rhs.len()))
+                .reverse()
+        },
+    );
+    Ok(mimes)
+}
+
 fn mime_precision_score(main: &str, sub: &str) -> u8 {
     match (main, sub) {
         ("*", "*") => 0,
@@ -93,8 +110,8 @@ fn mime_precision_score(main: &str, sub: &str) -> u8 {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{parse_mime, ContentTypeNegotiation};
-    use crate::{Error, NegotiationType, Negotiator};
+    use super::{parse_mime, parse_sort_header, ContentTypeNegotiation};
+    use crate::{Error, Negotiator};
 
     #[test]
     fn new() {
@@ -170,73 +187,37 @@ mod tests {
     #[test]
     fn parse_sort() {
         assert_eq!(
-            ContentTypeNegotiation::parse_sort_header(
-                "text/*, text/plain, text/plain;format=flowed, */*"
-            )
-            .unwrap(),
+            parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
-                    (
-                        "text".to_owned(),
-                        "plain".to_owned(),
-                        BTreeMap::from([("format".to_owned(), "flowed".to_owned())])
-                    ),
+                    ("text", "plain", BTreeMap::from([("format", "flowed")])),
                     1.
                 ),
-                (
-                    ("text".to_owned(), "plain".to_owned(), BTreeMap::default()),
-                    1.
-                ),
-                (("text".to_owned(), "*".to_owned(), BTreeMap::default()), 1.),
-                (("*".to_owned(), "*".to_owned(), BTreeMap::default()), 1.),
+                (("text", "plain", BTreeMap::default()), 1.),
+                (("text", "*", BTreeMap::default()), 1.),
+                (("*", "*", BTreeMap::default()), 1.),
             ]
         );
 
         assert_eq!(
-            ContentTypeNegotiation::parse_sort_header(
-                "text/*, text/plain, text/plain;format=flowed, */*"
-            )
-            .unwrap(),
+            parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
-                    (
-                        "text".to_owned(),
-                        "plain".to_owned(),
-                        BTreeMap::from([("format".to_owned(), "flowed".to_owned())])
-                    ),
+                    ("text", "plain", BTreeMap::from([("format", "flowed")])),
                     1.
                 ),
-                (
-                    ("text".to_owned(), "plain".to_owned(), BTreeMap::default()),
-                    1.
-                ),
-                (("text".to_owned(), "*".to_owned(), BTreeMap::default()), 1.),
-                (("*".to_owned(), "*".to_owned(), BTreeMap::default()), 1.),
+                (("text", "plain", BTreeMap::default()), 1.),
+                (("text", "*", BTreeMap::default()), 1.),
+                (("*", "*", BTreeMap::default()), 1.),
             ]
         );
 
         assert_eq!(
-            ContentTypeNegotiation::parse_sort_header(
-                "text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid"
-            )
-            .unwrap(),
+            parse_sort_header("text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid").unwrap(),
             vec![
-                (
-                    ("text".to_owned(), "hybrid".to_owned(), BTreeMap::default()),
-                    1.
-                ),
-                (
-                    (
-                        "text".to_owned(),
-                        "not-plain".to_owned(),
-                        BTreeMap::default()
-                    ),
-                    0.4
-                ),
-                (
-                    ("text".to_owned(), "plain".to_owned(), BTreeMap::default()),
-                    0.2
-                ),
+                (("text", "hybrid", BTreeMap::default()), 1.),
+                (("text", "not-plain", BTreeMap::default()), 0.4),
+                (("text", "plain", BTreeMap::default()), 0.2),
             ]
         );
     }
