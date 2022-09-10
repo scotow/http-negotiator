@@ -1,4 +1,4 @@
-use crate::{match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
+use crate::{match_first, AsNegotiationStr, Error, MaybeWildcard, NegotiationType};
 
 #[derive(Copy, Clone, Debug)]
 pub struct EncodingNegotiation;
@@ -25,7 +25,7 @@ impl NegotiationType for EncodingNegotiation {
             .split(',')
             .map(|entry| {
                 let mut parts = entry.split(';').map(str::trim);
-                let main = parts.next().ok_or(Error::InvalidHeader)?;
+                let main = MaybeWildcard::from_str(parts.next().ok_or(Error::InvalidHeader)?);
                 let q = match parts.next() {
                     Some(first_param) => {
                         let (k, v) = first_param.split_once('=').ok_or(Error::InvalidHeader)?;
@@ -44,7 +44,7 @@ impl NegotiationType for EncodingNegotiation {
         Ok(match_first(
             supported,
             methods.iter().map(|(m, _q)| m),
-            matches_wildcard,
+            |s, h| h.matches(s),
         ))
     }
 

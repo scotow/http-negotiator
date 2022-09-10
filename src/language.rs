@@ -1,4 +1,4 @@
-use crate::{match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType};
+use crate::{match_first, AsNegotiationStr, Error, MaybeWildcard, NegotiationType};
 
 #[derive(Copy, Clone, Debug)]
 pub struct LanguageNegotiation;
@@ -26,7 +26,10 @@ impl NegotiationType for LanguageNegotiation {
             .map(|entry| {
                 let mut parts = entry.split(';').map(str::trim);
                 let left = parts.next().ok_or(Error::InvalidHeader)?;
-                let (main, sub) = left.split_once('-').unwrap_or((left, "*"));
+                let (main, sub) = left
+                    .split_once('-')
+                    .map(|(m, s)| (m, MaybeWildcard::Specific(s)))
+                    .unwrap_or((left, MaybeWildcard::Wildcard));
                 let q = match parts.next() {
                     Some(first_param) => {
                         let (k, v) = first_param.split_once('=').ok_or(Error::InvalidHeader)?;
@@ -43,13 +46,16 @@ impl NegotiationType for LanguageNegotiation {
             .collect::<Result<Vec<_>, _>>()?;
         languages.sort_by(|((_, s1), q1), ((_, s2), q2)| {
             q1.total_cmp(q2)
-                .then_with(|| (*s2 == "*").cmp(&(*s1 == "*")))
+                .then_with(|| {
+                    (matches!(s2, MaybeWildcard::Wildcard))
+                        .cmp(&(matches!(s1, MaybeWildcard::Wildcard)))
+                })
                 .reverse()
         });
         Ok(match_first(
             supported,
             languages.iter().map(|(l, _q)| l),
-            |s, h| s.0 == h.0 && matches_wildcard(&s.1, &h.1),
+            |s, h| s.0 == h.0 && h.1.matches(&s.1),
         ))
     }
 

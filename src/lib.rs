@@ -12,6 +12,41 @@ pub use encoding::*;
 pub use error::Error;
 pub use language::*;
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum MaybeWildcard<T> {
+    Specific(T),
+    Wildcard,
+}
+
+impl<T> MaybeWildcard<T> {
+    pub fn from_str<'a>(input: T) -> MaybeWildcard<T>
+    where
+        T: PartialEq<&'a str>,
+    {
+        if input == "*" {
+            Self::Wildcard
+        } else {
+            Self::Specific(input)
+        }
+    }
+
+    pub fn matches<U>(&self, other: &U) -> bool
+    where
+        T: PartialEq<U>,
+    {
+        match self {
+            MaybeWildcard::Specific(s) => s == other,
+            MaybeWildcard::Wildcard => true,
+        }
+    }
+}
+
+impl<'a> From<&'a str> for MaybeWildcard<&'a str> {
+    fn from(s: &'a str) -> Self {
+        Self::from_str(s)
+    }
+}
+
 pub trait AsNegotiationStr {
     fn as_str(&self) -> &str;
 }
@@ -94,10 +129,6 @@ where
             .into_iter()
             .find_map(|(s, v)| f(s, h).then(|| v))
     })
-}
-
-fn matches_wildcard<L: AsRef<str>, R: AsRef<str>>(specific: L, maybe_wildcard: R) -> bool {
-    specific.as_ref() == maybe_wildcard.as_ref() || maybe_wildcard.as_ref() == "*"
 }
 
 fn extract_quality<K, V>(params: &mut BTreeMap<K, V>) -> Result<f32, Error>

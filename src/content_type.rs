@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, collections::BTreeMap};
 
 use crate::{
-    extract_quality, match_first, matches_wildcard, AsNegotiationStr, Error, NegotiationType,
+    extract_quality, match_first, AsNegotiationStr, Error, MaybeWildcard, NegotiationType,
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -23,8 +23,9 @@ impl NegotiationType for ContentTypeNegotiation {
             supported,
             mimes.iter().map(|(ct, _q)| ct),
             |s, h| {
-                matches_wildcard(&s.0, &h.0)
-                    && matches_wildcard(&s.1, &h.1)
+                h.0.matches(&s.0) && h.1.matches(&s.1)
+                // matches_wildcard(&s.0, &h.0)
+                //     && matches_wildcard(&s.1, &h.1)
                     && s.2
                         .iter()
                         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -39,8 +40,9 @@ impl NegotiationType for ContentTypeNegotiation {
     }
 }
 
-fn parse_mime<'a, T>(mime: &'a str, from_header: bool) -> Result<(T, T, BTreeMap<T, T>), Error>
+fn parse_mime<'a, W, T>(mime: &'a str, from_header: bool) -> Result<(W, W, BTreeMap<T, T>), Error>
 where
+    W: From<&'a str>,
     T: From<&'a str> + Ord + Borrow<str>,
 {
     let mut parts = mime.split(';');
@@ -74,11 +76,21 @@ where
 #[allow(clippy::type_complexity)]
 fn parse_sort_header(
     header: &str,
-) -> Result<Vec<((&str, &str, BTreeMap<&str, &str>), f32)>, Error> {
+) -> Result<
+    Vec<(
+        (
+            MaybeWildcard<&str>,
+            MaybeWildcard<&str>,
+            BTreeMap<&str, &str>,
+        ),
+        f32,
+    )>,
+    Error,
+> {
     let mut mimes = header
         .split(',')
         .map(|m| {
-            let (main, sub, mut params) = parse_mime::<&str>(m.trim(), true)?;
+            let (main, sub, mut params) = parse_mime::<MaybeWildcard<&str>, &str>(m.trim(), true)?;
             let q = extract_quality(&mut params)?;
             Ok(((main, sub, params), q))
         })
@@ -98,10 +110,10 @@ fn parse_sort_header(
     Ok(mimes)
 }
 
-fn mime_precision_score(main: &str, sub: &str) -> u8 {
+fn mime_precision_score(main: &MaybeWildcard<&str>, sub: &MaybeWildcard<&str>) -> u8 {
     match (main, sub) {
-        ("*", "*") => 0,
-        (_, "*") => 1,
+        (MaybeWildcard::Wildcard, MaybeWildcard::Wildcard) => 0,
+        (_, MaybeWildcard::Wildcard) => 1,
         _ => 2,
     }
 }
@@ -111,7 +123,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{parse_mime, parse_sort_header, ContentTypeNegotiation};
-    use crate::{Error, Negotiator};
+    use crate::{Error, MaybeWildcard, Negotiator};
 
     #[test]
     fn new() {
@@ -135,7 +147,7 @@ mod tests {
     fn parse() {
         // Basic.
         assert_eq!(
-            parse_mime("text/plain", false).unwrap(),
+            parse_mime::<_, &str>("text/plain", false).unwrap(),
             ("text", "plain", BTreeMap::default()),
         );
 
@@ -162,24 +174,24 @@ mod tests {
         );
 
         assert_eq!(
-            parse_mime::<&str>("text/plain;q=1", false).unwrap_err(),
+            parse_mime::<&str, &str>("text/plain;q=1", false).unwrap_err(),
             Error::QualityNotAllowed,
         );
 
         assert_eq!(
-            parse_mime::<&str>("*/plain", true).unwrap_err(),
+            parse_mime::<&str, &str>("*/plain", true).unwrap_err(),
             Error::InvalidWildcard
         );
 
         assert_eq!(
-            parse_mime::<&str>("text/*", false).unwrap_err(),
+            parse_mime::<&str, &str>("text/*", false).unwrap_err(),
             Error::InvalidWildcard
         );
 
-        assert!(parse_mime::<&str>("text/*", true).is_ok());
+        assert!(parse_mime::<&str, &str>("text/*", true).is_ok());
 
         assert_eq!(
-            parse_mime::<&str>("text/plain/extra", true).unwrap_err(),
+            parse_mime::<&str, &str>("text/plain/extra", true).unwrap_err(),
             Error::TooManyParts
         );
     }
@@ -190,12 +202,37 @@ mod tests {
             parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
-                    ("text", "plain", BTreeMap::from([("format", "flowed")])),
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("plain").into(),
+                        BTreeMap::from([("format", "flowed")])
+                    ),
                     1.
                 ),
-                (("text", "plain", BTreeMap::default()), 1.),
-                (("text", "*", BTreeMap::default()), 1.),
-                (("*", "*", BTreeMap::default()), 1.),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("plain"),
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Wildcard,
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
+                (
+                    (
+                        MaybeWildcard::Wildcard,
+                        MaybeWildcard::Wildcard,
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
             ]
         );
 
@@ -203,21 +240,67 @@ mod tests {
             parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
-                    ("text", "plain", BTreeMap::from([("format", "flowed")])),
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("plain"),
+                        BTreeMap::from([("format", "flowed")])
+                    ),
                     1.
                 ),
-                (("text", "plain", BTreeMap::default()), 1.),
-                (("text", "*", BTreeMap::default()), 1.),
-                (("*", "*", BTreeMap::default()), 1.),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("plain"),
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Wildcard,
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
+                (
+                    (
+                        MaybeWildcard::Wildcard,
+                        MaybeWildcard::Wildcard,
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
             ]
         );
 
         assert_eq!(
             parse_sort_header("text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid").unwrap(),
             vec![
-                (("text", "hybrid", BTreeMap::default()), 1.),
-                (("text", "not-plain", BTreeMap::default()), 0.4),
-                (("text", "plain", BTreeMap::default()), 0.2),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("hybrid"),
+                        BTreeMap::default()
+                    ),
+                    1.
+                ),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("not-plain"),
+                        BTreeMap::default()
+                    ),
+                    0.4
+                ),
+                (
+                    (
+                        MaybeWildcard::Specific("text"),
+                        MaybeWildcard::Specific("plain"),
+                        BTreeMap::default()
+                    ),
+                    0.2
+                ),
             ]
         );
     }
