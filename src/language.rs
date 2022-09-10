@@ -33,7 +33,7 @@ impl NegotiationType for LanguageNegotiation {
                 let q = match parts.next() {
                     Some(first_param) => {
                         let (k, v) = first_param.split_once('=').ok_or(Error::InvalidHeader)?;
-                        if k != "q" {
+                        if k != "q" || parts.next().is_some() {
                             return Err(Error::ParamsNotAllowed);
                         }
                         v.parse::<f32>()
@@ -91,6 +91,11 @@ mod tests {
 
         assert_eq!(
             Negotiator::<LanguageNegotiation, _>::new(["en-US;type=2"]).unwrap_err(),
+            Error::ParamsNotAllowed
+        );
+
+        assert_eq!(
+            Negotiator::<LanguageNegotiation, _>::new(["en-US;q=1;type=2"]).unwrap_err(),
             Error::ParamsNotAllowed
         );
     }
