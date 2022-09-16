@@ -24,8 +24,6 @@ impl NegotiationType for ContentTypeNegotiation {
             mimes.iter().map(|(ct, _q)| ct),
             |s, h| {
                 h.0.matches(&s.0) && h.1.matches(&s.1)
-                // matches_wildcard(&s.0, &h.0)
-                //     && matches_wildcard(&s.1, &h.1)
                     && s.2
                         .iter()
                         .map(|(k, v)| (k.as_str(), v.as_str()))
