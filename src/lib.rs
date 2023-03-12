@@ -189,9 +189,9 @@ pub(crate) mod axum {
         negotiator: Arc<Negotiator<N, T>>,
     }
 
-    impl<ResBody, S, N, T> Service<Request<ResBody>> for NegotiatorService<S, N, T>
+    impl<B, S, N, T> Service<Request<B>> for NegotiatorService<S, N, T>
     where
-        S: Service<Request<ResBody>>,
+        S: Service<Request<B>>,
         N: NegotiationType + 'static,
         <N as NegotiationType>::Parsed: Sync + Send,
         T: Clone + Send + Sync + 'static,
@@ -205,7 +205,7 @@ pub(crate) mod axum {
             self.inner.poll_ready(cx)
         }
 
-        fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
+        fn call(&mut self, mut req: Request<B>) -> Self::Future {
             req.extensions_mut().insert(Arc::clone(&self.negotiator));
             self.inner.call(req)
         }
