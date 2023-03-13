@@ -14,11 +14,11 @@ impl NegotiationType for ContentTypeNegotiation {
         parse_mime(raw.as_str(), false)
     }
 
-    fn parse_negotiate_header<'a, T>(
+    fn parse_and_negotiate_header<'a, T>(
         supported: &'a [(Self::Parsed, T)],
         header: &str,
     ) -> Result<Option<&'a T>, Error> {
-        let mimes = parse_sort_header(header)?;
+        let mimes = parse_and_sort_header(header)?;
         Ok(match_first(
             supported,
             mimes.iter().map(|(ct, _q)| ct),
@@ -73,7 +73,7 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn parse_sort_header(
+fn parse_and_sort_header(
     header: &str,
 ) -> Result<
     Vec<(
@@ -121,7 +121,7 @@ fn mime_precision_score(main: &MaybeWildcard<&str>, sub: &MaybeWildcard<&str>) -
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{parse_mime, parse_sort_header, ContentTypeNegotiation};
+    use super::{parse_and_sort_header, parse_mime, ContentTypeNegotiation};
     use crate::{Error, MaybeWildcard, Negotiator};
 
     #[test]
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn parse_sort() {
         assert_eq!(
-            parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
+            parse_and_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
                     (
@@ -236,7 +236,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
+            parse_and_sort_header("text/*, text/plain, text/plain;format=flowed, */*").unwrap(),
             vec![
                 (
                     (
@@ -274,7 +274,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_sort_header("text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid").unwrap(),
+            parse_and_sort_header("text/plain;q=0.2,text/not-plain;q=0.4,text/hybrid").unwrap(),
             vec![
                 (
                     (

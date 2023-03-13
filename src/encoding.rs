@@ -17,7 +17,7 @@ impl NegotiationType for EncodingNegotiation {
         Ok(input.to_owned())
     }
 
-    fn parse_negotiate_header<'a, T>(
+    fn parse_and_negotiate_header<'a, T>(
         supported: &'a [(Self::Parsed, T)],
         header: &str,
     ) -> Result<Option<&'a T>, Error> {

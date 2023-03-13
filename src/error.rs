@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
-use thiserror::Error;
+use thiserror::Error as ThisError;
 
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(ThisError, Eq, PartialEq, Debug)]
 pub enum Error {
     #[error("missing separator \"{0}\"")]
     MissingSeparator(char),
