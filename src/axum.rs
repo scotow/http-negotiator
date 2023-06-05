@@ -10,7 +10,7 @@ use http::{request::Parts, StatusCode};
 use crate::{AsNegotiationStr, Error, NegotiationType, Negotiator};
 
 #[derive(Clone, Debug)]
-pub struct Negotiation<N, T>(PhantomData<N>, T);
+pub struct Negotiation<N, T>(pub PhantomData<N>, pub T);
 
 impl<N, T> Negotiation<N, T> {
     pub fn into_inner(self) -> T {

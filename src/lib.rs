@@ -70,7 +70,7 @@ pub trait NegotiationType {
         header: &str,
     ) -> Result<Option<&'a T>, Error>;
 
-    // #[cfg(feature = "axum")]
+    #[cfg(feature = "axum")]
     fn associated_header() -> http::header::HeaderName;
 }
 
